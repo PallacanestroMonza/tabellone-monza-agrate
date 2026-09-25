@@ -149,6 +149,237 @@ function nextQuarter(){state.q=Math.min(4,state.q+1);state.running=false;clearIn
 function prevQuarter(){state.q=Math.max(1,state.q-1);state.running=false;clearInterval(timer);state.sec=600;render();}
 function resetGame(){state={hs:0,as:0,hf:0,af:0,hto:0,ato:0,q:1,sec:600,running:false};clearInterval(timer);render();}
 render();
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-database-compat.js"></script>
+
+<script>
+const firebaseConfig = {
+apiKey: "AIzaSyAysJGD5jBnTEPY1lSlvk9yRfTXtyVZHwU",
+authDomain: "tabellone-monza-agrate-3f7a1.firebaseapp.com",
+databaseURL: "https://tabellone-monza-agrate-3f7a1-default-rtdb.europe-west1.firebasedatabase.app",
+projectId: "tabellone-monza-agrate-3f7a1",
+storageBucket: "tabellone-monza-agrate-3f7a1.firebasestorage.app",
+messagingSenderId: "1065515511910",
+appId: "1:1065515511910:web:c2939024b149145b4dbda7"
+};
+
+firebase.initializeApp(firebaseConfig);
+
+const db = firebase.database();
+const gameRef = db.ref("scoreboard");
+
+const DEFAULT_STATE = {
+hs: 0,
+as: 0,
+hf: 0,
+af: 0,
+hto: 0,
+ato: 0,
+q: 1,
+sec: 600,
+running: false,
+endAt: null
+};
+
+let state = {...DEFAULT_STATE};
+let timer = null;
+let serverOffset = 0;
+
+db.ref(".info/serverTimeOffset").on("value", snap => {
+serverOffset = snap.val() || 0;
+});
+
+function nowMs() {
+return Date.now() + serverOffset;
+}
+
+function remainingSeconds() {
+if (!state.running || !state.endAt) return state.sec;
+
+return Math.max(
+0,
+Math.ceil((state.endAt - nowMs()) / 1000)
+);
+}
+
+function saveState() {
+return gameRef.set(state);
+}
+
+function dots(n, cls, max = 5) {
+let x = "";
+
+for (let i = 0; i < max; i++) {
+x += '<span class="dot ' + cls + ' ' +
+(i < n ? 'on' : '') + '"></span>';
+}
+
+return x;
+}
+
+function render() {
+document.getElementById("homeScore").textContent =
+String(state.hs).padStart(2, "0");
+
+document.getElementById("awayScore").textContent =
+String(state.as).padStart(2, "0");
+
+document.getElementById("quarter").textContent =
+state.q + "° QUARTO";
+
+const currentSec = remainingSeconds();
+
+const m = Math.floor(currentSec / 60);
+const s = currentSec % 60;
+
+document.getElementById("clock").textContent =
+String(m).padStart(2, "0") +
+":" +
+String(s).padStart(2, "0");
+
+document.getElementById("homeFouls").innerHTML =
+dots(state.hf, "homeDot");
+
+document.getElementById("awayFouls").innerHTML =
+dots(state.af, "awayDot");
+
+document.getElementById("homeTO").innerHTML =
+dots(state.hto, "homeDot", 5);
+
+document.getElementById("awayTO").innerHTML =
+dots(state.ato, "awayDot", 5);
+}
+
+function startTicker() {
+clearInterval(timer);
+
+if (state.running) {
+timer = setInterval(() => {
+const left = remainingSeconds();
+
+render();
+
+if (left <= 0) {
+state.sec = 0;
+state.running = false;
+state.endAt = null;
+
+clearInterval(timer);
+saveState();
+render();
+}
+}, 250);
+}
+
+render();
+}
+
+function score(t, n) {
+if (t === "h") {
+state.hs = Math.max(0, state.hs + n);
+} else {
+state.as = Math.max(0, state.as + n);
+}
+
+render();
+saveState();
+}
+
+function changeFoul(t, n) {
+if (t === "h") {
+state.hf = Math.min(5, Math.max(0, state.hf + n));
+} else {
+state.af = Math.min(5, Math.max(0, state.af + n));
+}
+
+render();
+saveState();
+}
+
+function changeTO(t, n) {
+if (t === "h") {
+state.hto = Math.min(5, Math.max(0, state.hto + n));
+} else {
+state.ato = Math.min(5, Math.max(0, state.ato + n));
+}
+
+render();
+saveState();
+}
+
+function toggleTimer() {
+if (state.running) {
+state.sec = remainingSeconds();
+state.running = false;
+state.endAt = null;
+
+clearInterval(timer);
+} else {
+if (state.sec <= 0) return;
+
+state.running = true;
+state.endAt = nowMs() + state.sec * 1000;
+}
+
+saveState();
+startTicker();
+}
+
+function resetClock() {
+state.running = false;
+state.endAt = null;
+state.sec = 600;
+
+clearInterval(timer);
+render();
+saveState();
+}
+
+function nextQuarter() {
+state.q = Math.min(4, state.q + 1);
+state.running = false;
+state.endAt = null;
+state.sec = 600;
+
+clearInterval(timer);
+render();
+saveState();
+}
+
+function prevQuarter() {
+state.q = Math.max(1, state.q - 1);
+state.running = false;
+state.endAt = null;
+state.sec = 600;
+
+clearInterval(timer);
+render();
+saveState();
+}
+
+function resetGame() {
+state = {...DEFAULT_STATE};
+
+clearInterval(timer);
+render();
+saveState();
+}
+
+/* Quando apro il pannello recupero la partita già esistente */
+gameRef.once("value").then(snapshot => {
+if (snapshot.exists()) {
+state = {
+...DEFAULT_STATE,
+...snapshot.val()
+};
+} else {
+saveState();
+}
+
+startTicker();
+});
+
+render();
 </script>
 </body>
 </html>
